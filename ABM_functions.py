@@ -1,4 +1,5 @@
 import random
+from matplotlib.ft2font import LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -90,6 +91,7 @@ def count_gender(company):
     return female_count, male_count
 
 
+########## PLOTTING ##########
 # function for plotting the gender distribution in the company
 def plot_gender(company, tick):
     '''
@@ -97,7 +99,7 @@ def plot_gender(company, tick):
 
     Parameters
     ---------- 
-    company : dictionary, a dictionary with the job titles as keys and empty lists as values
+    company : dictionary, a dictionary with the job titles as keys and lists of agents as values
     '''
     female, male = count_gender(company)
     
@@ -125,6 +127,39 @@ def plot_gender(company, tick):
 
     return ax
 
+# function for plotting the gender distribution development over all ticks
+def plot_gender_development(company: dict, months:int, data: pd.DataFrame):
+    '''
+    Plots the counts of each gender in each job-title in the company for each tick
+
+    Parameters
+    ----------
+    company : dictionary, a dictionary with the job titles as keys and lists of agents as values
+    months: int, the number of months simulated
+    data: pandas dataframe, a dataframe with the information about the genders of employees in each job-title
+    '''
+    fig, axs = plt.subplots(nrows = 1, ncols = 4, figsize=(12,5))
+    colorlist = {'female': 'skyblue', 'male': 'steelblue'}
+    markers = [plt.Line2D([0,0],[0,0],color=color, marker='o', linestyle='') for color in colorlist.values()]
+    plt.legend(markers, colorlist.keys(), numpoints=1) # legend
+    fig.suptitle('Counts of each gender in each position', fontsize=16) # title
+    fig.text(0.5, 0.04, 'Month', ha='center', va='center') # x-axis label 
+    fig.text(0.07, 0.5, 'Count', ha='center', va='center', rotation='vertical') # y-axis label
+
+    for index, ax in enumerate(axs.flatten()):
+        jobtitle = list(company.keys())[index]
+        #ax.set_xlabel('Month')
+        #ax.set_ylabel('Count')
+        ax.set_title(jobtitle) # setting title to the job-title
+
+        for gender in ['female', 'male']:
+            gender_dat = data.loc[data['gender'] == gender]
+            dat = gender_dat[jobtitle]
+            ticks = gender_dat['tick']
+            ax.plot(ticks, dat, color = colorlist[gender])
+    
+
+
 
 
 
@@ -147,7 +182,9 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list):
     titles_n : list, a list of integers with the number of agents in each job title
     '''
     # creating empty dataframe for the results
-    data = pd.DataFrame(columns = ['tick', 'gender', 'department_head', 'leader', 'senior', 'junior'])
+    col_names = ['tick', 'gender']
+    col_names.extend(company_titles)
+    data = pd.DataFrame(columns = col_names)
 
     # create company
     company = create_company(company_titles, titles_n)
@@ -158,7 +195,7 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list):
 
     for month in range(months):
         # iterating through all agents
-        for i in company.keys():
+        for ind_i, i in enumerate(company.keys()):
             for j in range(0, len(company[i])):
                 if company[i][j] is not None:
                     # adding a month to the senority of all agents
@@ -183,7 +220,7 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list):
                         # REMEMBER: SHOULD BE CHANGED TO CHOOSE THE BEST AGENT, possibly by age or senority or adding some kind of discrimination
                         agent = None
                         while agent == None: # REMEMBER: This runs infinetly if all agents are None in the given category... FIX THIS
-                            agent = random.choice(company[list(company.keys())[2+1]])
+                            agent = random.choice(company[list(company.keys())[ind_i+1]])
 
 
                         # promoting the agent
@@ -201,24 +238,34 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list):
             if i == 'Department Head' and len(company[i]) > 19:
                 company[i][random.randint(0, len(company[i])-1)] = None
 
-            # fire 1 random leader if there are more than 30 leaders
+            # fire 1 random leader if there are more than 39 leaders
             if i == 'Leader' and len(company[i]) > 39:
                 company[i][random.randint(0, len(company[i])-1)] = None
+            
+            #fire 1 random senior if there are more than 69 senior
+            if i == 'Senior' and len(company[i]) > 69:
+                company[i][random.randint(0, len(company[i])-1)] = None
+
+            # fire 1 random junior if there are more than 128 juniors
+            if i == 'Junior' and len(company[i]) > 128:
+                company[i][random.randint(0, len(company[i])-1)] = None
+            
 
 
         # plotting and appending data to data frame                           
-        plot_gender(company, tick = month)
+        # plot_gender(company, tick = month)
 
-        f = {'gender': 'female', 'tick': month, 'department_head': count_gender(company)[0][0],'leader': count_gender(company)[0][1], 'senior': count_gender(company)[0][2], 'junior': count_gender(company)[0][3]}
-        m = {'gender': 'male', 'tick': month, 'department_head': count_gender(company)[1][0],'leader': count_gender(company)[1][1], 'senior': count_gender(company)[1][2], 'junior': count_gender(company)[1][3] }
+        f = {'gender': 'female', 'tick': month, 'Department Head': count_gender(company)[0][0],'Leader': count_gender(company)[0][1], 'Senior': count_gender(company)[0][2], 'Junior': count_gender(company)[0][3]}
+        m = {'gender': 'male', 'tick': month, 'Department Head': count_gender(company)[1][0],'Leader': count_gender(company)[1][1], 'Senior': count_gender(company)[1][2], 'Junior': count_gender(company)[1][3]}
         
         # create pandas dataframe from dictionaries f and m
         new_data = pd.DataFrame.from_dict([f, m])
-        
-        #new_data_f = pd.DataFrame.from_dict(f)
-        #new_data_m = pd.DataFrame.from_dict(d)
         data = data.append(new_data, ignore_index=False, verify_integrity=False, sort=False)
-    
+
+        print('tick {} done'.format(month))
+
+    # plotting the gender development over time
+    plot_gender_development(company, months=months, data = data)
     # saving the data to a csv-file
     data.to_csv(save_path)
 
