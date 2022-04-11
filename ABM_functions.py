@@ -2,7 +2,6 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-from pyparsing import col
 
 
 ########## PREPERATION ##########
@@ -136,7 +135,7 @@ def plot_gender(company, tick):
 # figure out what data to include
 
 
-def run_abm(months: int, save_path: str):
+def run_abm(months: int, save_path: str, company_titles: list, titles_n: list):
     '''
     Runs the ABM simulation
 
@@ -144,12 +143,14 @@ def run_abm(months: int, save_path: str):
     ----------
     months : int, the number of months to simulate
     save_path : str, the path to the csv file
+    company_titles : list, a list of strings with the job titles
+    titles_n : list, a list of integers with the number of agents in each job title
     '''
     # creating empty dataframe for the results
     data = pd.DataFrame(columns = ['tick', 'gender', 'department_head', 'leader', 'senior', 'junior'])
 
     # create company
-    company = create_company(['Department Head', 'Leader', 'Senior', 'Junior'], [10, 20, 40, 100])
+    company = create_company(company_titles, titles_n)
     # populate company
     populate_company(company)
     # plot initial 
@@ -169,6 +170,8 @@ def run_abm(months: int, save_path: str):
                         company[i][j] = None
 
                 # if there is an empty position in the company, a agent should be promoted or created
+                # REMEMBER: maybe we should retain information about the previous agent to hire someone similar to? eg. instead of setting the value in the dictionary to None we could set it to gender of the old agent? maybe also include age?
+                    # but we would have to change all the places where it says if company.. == None
                 if company[i][j] == None:
                     # if level is the lowest, a new agent is created
                     if i == list(company.keys())[-1]:
@@ -191,15 +194,16 @@ def run_abm(months: int, save_path: str):
                         company[i][j].postition = i
                         # changing the index of the agent
                         company[i][j].index = j
-                
-                # fire one random department head if there are more than 8 department heads
-                if i == 'Department Head' and len(company[i]) > 8:
-                    company[i][random.randint(0, len(company[i])-1)] = None
 
-                # fire 1 random leader if there are more than 20 leaders
-                if i == 'Leader' and len(company[i]) > 20:
-                    company[i][random.randint(0, len(company[i])-1)] = None
 
+            ### WE NEED TO FIND ANOTHER WAY FOR AGENTS TO QUIT OR GET FIRED ###    
+            # fire one random department head if there are more than 18 department heads
+            if i == 'Department Head' and len(company[i]) > 19:
+                company[i][random.randint(0, len(company[i])-1)] = None
+
+            # fire 1 random leader if there are more than 30 leaders
+            if i == 'Leader' and len(company[i]) > 39:
+                company[i][random.randint(0, len(company[i])-1)] = None
 
 
         # plotting and appending data to data frame                           
