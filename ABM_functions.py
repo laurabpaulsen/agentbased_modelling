@@ -1,5 +1,4 @@
 import random
-from matplotlib.ft2font import LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -37,36 +36,19 @@ def create_company(titles:list, n:list):
     return company
 
 
-
 # function for creating the first agents and putting them in the company
-def populate_company(company: dict):
+def populate_company(company: dict, weights: dict):
     '''
     Creates the first agents and puts them in the company dictionary.
 
     Parameters
     ----------
     company : dictionary, a dictionary with the job titles as keys and empty lists as values
+    weights: dictionary, a dictionary containing information on how to generate the attributes of the agents in each jobtitle
     '''
     for i in company.keys():
         for j in range(0, len(company[i])):
-            if i == 'Department Head':
-                weights = [0.8, 0.2] # more likely to be male when department head
-                age = random.gauss(50, 8)
-                senority = random.gauss(10, 3)
-            elif i == 'Leader':
-                weights = [0.7, 0.3] # more likely to be male when leader
-                age = random.gauss(40, 6)
-                senority = random.gauss(5, 3)
-            elif i == 'Senior':
-                weights = [0.6, 0.4] # more likely to be male when senior
-                age = random.gauss(35, 6)
-                senority = random.gauss(4, 1)
-            elif i == 'Junior': 
-                weights = [0.5, 0.5] # equally likely to be male and female
-                age = random.gauss(30, 6)
-                senority = random.gauss(3, 1)
-
-            company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weights, k = 1), age = age, senority = senority)
+            company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weights[i]['weights'], k = 1), age = weights[i]['age'], senority = weights[i]['senority'])
 
 
 # function for counting gender of agents in the different hierchical levels of the company
@@ -157,9 +139,102 @@ def plot_gender_development(company: dict, months:int, data: pd.DataFrame):
             dat = gender_dat[jobtitle]
             ticks = gender_dat['tick']
             ax.plot(ticks, dat, color = colorlist[gender])
+
+# get nth_key
+def get_nth_key(dictionary: dict, n=0):
+    '''
+    Gets the nth key of a dictionary
+
+    Parameters
+    ----------
+    dictionary: dictionary
+    n: the nth key to get
+
+    '''
+    if n < 0:
+        n += len(dictionary)
+    for i, key in enumerate(dictionary.keys()):
+        if i == n:
+            return key
+    raise IndexError("dictionary index out of range")
+
+
+def promote_agent(company:dict, i, j, ind_i, weight:dict):
+    '''
+    Promotes an agent if the empty position is not at the lowest level of the company. It the empty position is at the lowest level of the company, a new agent is generated and hired. 
+
+    Parameters
+    ----------
+    company : dictionary, 
+    i : the level at which a position is available
+    j : the index at which a position is available at level i
+    ind_i : the index of the level at which a position is available
+    weight : dictionary, a dictionary containing the information used to generate agents (used to generate new agents at he lowest level)
+    '''
+    # if level is the lowest, a new agent is created
+    if i == list(company.keys())[-1]:
+        company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weight[i]['weights'], k = 1), age = weight[i]['age'], senority = weight[i]['senority'])
     
+    elif i != list(company.keys())[-1]:
+        weights = []
+        # determining weight from the attributes of agents on the level lower that the empty spot
+        # the weight is determined by the age and the senority of the agent
+        # the weight is normalized by the number of agents on the level lower that the empty spot
+        index = get_nth_key(company, (ind_i+1))
+        for k in range(0, len(company[index])):
+            if company[index][k] is not None:
+                weights.append((company[index][k].age + company[index][k].senority)/(len(company[index])))
+            else:
+                weights.append(0)
+        # the agent with the highest weight is promoted (could be changed to random choice?)
+        agent = company[index][np.argmax(weights)]
 
 
+        #else:
+        #    agent = None
+        #    while agent == None: # REMEMBER: This runs infinetly if all agents are None in the given category... FIX THIS
+        #        agent = random.choice(company[list(company.keys())[ind_i+1]])
+
+        # promoting the agent
+        company[i][j] = agent
+        # removing the agent from the lower level of the company
+        company[agent.position][agent.index] = None
+        # changing the position of the agent
+        company[i][j].postition = i
+            # changing the index of the agent
+        company[i][j].index = j
+
+
+def fire_agent(company, i):
+    if i == 'Department Head' and len(company[i]) > 19:
+        company[i][random.randint(0, len(company[i])-1)] = None
+        
+    # fire 1 random leader if there are more than 39 leaders
+    if i == 'Leader' and len(company[i]) > 39:
+        company[i][random.randint(0, len(company[i])-1)] = None
+    #fire 1 random senior if there are more than 69 senior
+    if i == 'Senior' and len(company[i]) > 69:
+        company[i][random.randint(0, len(company[i])-1)] = None
+
+    # fire 1 random junior if there are more than 128 juniors
+    if i == 'Junior' and len(company[i]) > 128:
+        company[i][random.randint(0, len(company[i])-1)] = None
+
+
+def update_agents(company, i, j):
+    '''
+    Updates the agents each tick (e.g. adding a month to senority and age)
+    '''
+    # adding a month to the senority of all agents
+    company[i][j].senority += 1/12
+    # adding a month to the age of all agents
+    company[i][j].age += 1/12
+    # if the agent has reached the age of 68, the agent is retired
+    if company[i][j].age >= 68:
+        company[i][j] = None
+
+    # REMEMBER: maybe we should retain information about the previous agent to hire someone similar to? eg. instead of setting the value in the dictionary to None we could set it to gender of the old agent? maybe also include age?
+        # but we would have to change all the places where it says if company.. == None
 
 
 
@@ -169,8 +244,7 @@ def plot_gender_development(company: dict, months:int, data: pd.DataFrame):
 # check savepath in beginning of simulation
 # figure out what data to include
 
-
-def run_abm(months: int, save_path: str, company_titles: list, titles_n: list):
+def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, weights: dict, plot_each_tick = False):
     '''
     Runs the ABM simulation
 
@@ -180,80 +254,43 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list):
     save_path : str, the path to the csv file
     company_titles : list, a list of strings with the job titles
     titles_n : list, a list of integers with the number of agents in each job title
+    plot_each_tick : bool, if True, the gender distribution is plotted after each tick
+    weights : dictionary, a dictionary containing the information used to generate agents
     '''
     # creating empty dataframe for the results
     col_names = ['tick', 'gender']
     col_names.extend(company_titles)
     data = pd.DataFrame(columns = col_names)
-
+    
     # create company
     company = create_company(company_titles, titles_n)
-    # populate company
-    populate_company(company)
-    # plot initial 
-    plot_gender(company, tick=-1)
+    
+    # populate company using weights
+    populate_company(company, weights)
+
+    # plot initial
+    if plot_each_tick:
+        plot_gender(company, tick=-1)
 
     for month in range(months):
         # iterating through all agents
         for ind_i, i in enumerate(company.keys()):
             for j in range(0, len(company[i])):
                 if company[i][j] is not None:
-                    # adding a month to the senority of all agents
-                    company[i][j].senority += 1/12
-                    # adding a month to the age of all agents
-                    company[i][j].age += 1/12
-                    # if the agent has reached the age of 68, he should be fired
-                    if company[i][j].age >= 68:
-                        company[i][j] = None
+                    update_agents(company, i, j)
 
-                # if there is an empty position in the company, a agent should be promoted or created
-                # REMEMBER: maybe we should retain information about the previous agent to hire someone similar to? eg. instead of setting the value in the dictionary to None we could set it to gender of the old agent? maybe also include age?
-                    # but we would have to change all the places where it says if company.. == None
                 if company[i][j] == None:
-                    # if level is the lowest, a new agent is created
-                    if i == list(company.keys())[-1]:
-                        company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = [0.5, 0.5], k = 1), age = random.gauss(30, 6), senority = random.gauss(3, 1))
-
-                    # choosing another agent from the lower level of the company to promote (e.g. junior to senior)
-                    else:
-                        # choosing a random agent from the lower level of the company 
-                        # REMEMBER: SHOULD BE CHANGED TO CHOOSE THE BEST AGENT, possibly by age or senority or adding some kind of discrimination
-                        agent = None
-                        while agent == None: # REMEMBER: This runs infinetly if all agents are None in the given category... FIX THIS
-                            agent = random.choice(company[list(company.keys())[ind_i+1]])
-
-
-                        # promoting the agent
-                        company[i][j] = agent
-                        # removing the agent from the lower level of the company
-                        company[agent.position][agent.index] = None
-                        # changing the position of the agent
-                        company[i][j].postition = i
-                        # changing the index of the agent
-                        company[i][j].index = j
-
+                    promote_agent(company, i, j, ind_i, weight=weights)
 
             ### WE NEED TO FIND ANOTHER WAY FOR AGENTS TO QUIT OR GET FIRED ###    
-            # fire one random department head if there are more than 18 department heads
-            if i == 'Department Head' and len(company[i]) > 19:
-                company[i][random.randint(0, len(company[i])-1)] = None
-
-            # fire 1 random leader if there are more than 39 leaders
-            if i == 'Leader' and len(company[i]) > 39:
-                company[i][random.randint(0, len(company[i])-1)] = None
-            
-            #fire 1 random senior if there are more than 69 senior
-            if i == 'Senior' and len(company[i]) > 69:
-                company[i][random.randint(0, len(company[i])-1)] = None
-
-            # fire 1 random junior if there are more than 128 juniors
-            if i == 'Junior' and len(company[i]) > 128:
-                company[i][random.randint(0, len(company[i])-1)] = None
+            # fire some random agents
+            fire_agent(company, i=i)
             
 
 
         # plotting and appending data to data frame                           
-        # plot_gender(company, tick = month)
+        if plot_each_tick:
+            plot_gender(company, tick = month)
 
         f = {'gender': 'female', 'tick': month, 'Department Head': count_gender(company)[0][0],'Leader': count_gender(company)[0][1], 'Senior': count_gender(company)[0][2], 'Junior': count_gender(company)[0][3]}
         m = {'gender': 'male', 'tick': month, 'Department Head': count_gender(company)[1][0],'Leader': count_gender(company)[1][1], 'Senior': count_gender(company)[1][2], 'Junior': count_gender(company)[1][3]}
