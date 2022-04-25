@@ -11,6 +11,8 @@ Investigating recruitment
 
 
 
+
+
 Should the company be assumed to be growing, creating vacancies within each rank
 "Vacancies at the entry level are filled through hiring from a hypothetical external pool of candidates, while vacancies at all other ranks are filled by promoting individuals from the rank immediately below, which, in turn, creates additional vacancies at the rank from which someone was promoted." - An Agent-Based Simulation of How Promotion Biases Impact Corporate Gender Diversity
 * This is partially what is done now, except for the fact that a random agent is generated at the entry level
@@ -33,7 +35,6 @@ Should the company be assumed to be growing, creating vacancies within each rank
 ### Code to-do
 
     [] What kind of data do we need to save as we go?
-    [X] Give weights in populate_company function rather than if statements in the function
     [] Should senority be 0 for randomly generated new agents? 
     [] How many employees
         "For all results reported here, the company begins with a total of 300 employees, 150 women and 150 men. The employees are distributed across the four levels in a way that roughly simulates a typical company: 40% at the entry level, 30% at the manager level, 20% at the VP level and 10% at the executive level"

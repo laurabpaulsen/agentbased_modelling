@@ -16,6 +16,7 @@ class Agent:
         self.seniority = seniority
         self.fire = fire[0] # could potentially be dependent on the sex and the seniority and the position?
         self.seniority_position = seniority_position
+        self.parental_leave = None # DO SOMETHING HERE
 
 
 # function for creating empty dictionary (company)
@@ -268,6 +269,25 @@ def update_agents(company, i, j, weight:dict):
     if company[i][j].age >= 68:
         company[i][j] = None
 
+def mean_age(company: dict, i):
+    '''
+    company : dictionary,
+    i : the job title to calculate the mean age of
+    '''
+    ages_m = []
+    ages_f = []
+    for k in range(0, len(company[i])):
+        if company[i][k] is not None:
+            if company[i][k].gender[0] == 'male':
+                ages_m.append(company[i][k].age)
+            else:
+                ages_f.append(company[i][k].age)
+
+    return np.mean(ages_m), np.mean(ages_f)
+
+
+
+
 
 
 ########## SIMULATION ##########
@@ -319,10 +339,11 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
         # plotting and appending data to data frame                           
         if plot_each_tick:
             plot_gender(company, tick = month)
+        
 
         f = {'gender': 'female', 'tick': month, 'C-Suite': count_gender(company)[0][0],'SVP': count_gender(company)[0][1], 'VP': count_gender(company)[0][2], 'Senior Manager': count_gender(company)[0][3], 'Manager': count_gender(company)[0][4], 'Entry Level': count_gender(company)[0][5]}
         m = {'gender': 'male', 'tick': month, 'C-Suite': count_gender(company)[1][0],'SVP': count_gender(company)[1][1], 'VP': count_gender(company)[1][2], 'Senior Manager': count_gender(company)[1][3], 'Manager': count_gender(company)[1][4], 'Entry Level': count_gender(company)[1][5] }
-        
+
         # create pandas dataframe from dictionaries f and m
         new_data = pd.DataFrame.from_dict([f, m])
         data = data.append(new_data, ignore_index=False, verify_integrity=False, sort=False)
