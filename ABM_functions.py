@@ -16,7 +16,7 @@ class Agent:
         self.seniority = seniority
         self.fire = fire[0] # could potentially be dependent on the sex and the seniority and the position?
         self.seniority_position = seniority_position
-        self.parental_leave = None # DO SOMETHING HERE
+        self.parental_leave = None # DO SOMETHING HERE both seniority should be paused when on parental leave
 
 
 # function for creating empty dictionary (company)
@@ -184,7 +184,7 @@ def max_none(list):
     newlist = max([value for value in list if value is not None])
     return newlist
 
-def promote_agent(company:dict, i, j, ind_i, weight:dict, bias:float):
+def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list):
     '''
     Promotes an agent if the empty position is not at the lowest level of the company. It the empty position is at the lowest level of the company, a new agent is generated and hired. 
 
@@ -195,7 +195,7 @@ def promote_agent(company:dict, i, j, ind_i, weight:dict, bias:float):
     j : the index at which a position is available at level i
     ind_i : the index of the level at which a position is available
     weight : dictionary, a dictionary containing the information used to generate agents (used to generate new agents at he lowest level)
-    bias : float, a bias added to all males to either increase or decrease their chance of getting promoted
+    bias : list, 
     '''
     # if level is the lowest, a new agent is created
     if i == list(company.keys())[-1]:
@@ -209,7 +209,7 @@ def promote_agent(company:dict, i, j, ind_i, weight:dict, bias:float):
         for k in range(0, len(company[index])):
             if company[index][k] is not None:
                 if company[index][k].gender[0] == 'male':
-                    add_bias = bias
+                    add_bias = bias[ind_i] # adding bias of the position that needs to be filled
                 else:
                     add_bias = 0
                 weights.append((company[index][k].age + company[index][k].seniority)/(len(company[index])) + add_bias)
@@ -244,12 +244,13 @@ def fire_agent(company, i, j):
     '''
     if company[i][j] is not None:
         if company[i][j].fire[0] == True:
+            # ADD CONDitionS EG NOT ALLOWED TO FIRE AGENTS ON PARENTAL LEAVE
             company[i][j] = None
 
 
-def update_agents(company, i, j, weight:dict):
+def update_agents(company, i, j, weight:dict, months_pl):
     '''
-    Updates the agents each tick (e.g. adding a month to seniority and age)
+    Updates the agents each tick (e.g. adding a month to seniority and age). This function also keeps track of parental leave. 
 
     Parameters
     ----------
@@ -257,6 +258,7 @@ def update_agents(company, i, j, weight:dict):
     i : the job-title of the agent
     j : the index of the agent at the job-title
     weight : dictionary, a dictionary containing the information used to generate agents
+    months_pl : int, the number of months of parental leave
     '''
     # adding a month to the seniority of all agents
     company[i][j].seniority += 1/12
@@ -264,10 +266,31 @@ def update_agents(company, i, j, weight:dict):
     company[i][j].seniority_position += 1/12
     # adding a month to the age of all agents
     company[i][j].age += 1/12
+    if company[i][j].gender[0] == 'female' : # ADD STUFF FOR PARENTAL LEAVE
+        company[i][j].parental_leave = update_parental_leave(company, i, j, months_pl)
+    # fire some agents ADD CONDITIONS e.g., not allowed to fire agents on parental leave
     company[i][j].fire = random.choices([True, False], weights = weight[i]['fire'], k = 1)
     # if the agent has reached the age of 68, the agent is retired
     if company[i][j].age >= 68:
         company[i][j] = None
+
+def update_parental_leave(company: dict, i, j, months_pl):
+    '''
+
+    Parameters
+    ----------
+    company : dictionary
+    i : the job-title of the agent
+    j : the index of the agent at the job-title
+    '''
+
+    if company[i][j].parental_leave != None:
+        if company[i][j].parental_leave == months_pl:
+            company[i][j].parental_leave = None # when the agent has been on parental leave for the time specified, the parental leave is ended
+
+    elif company[i][j].parental_leave == None:
+        pass # ADD STUFF HERE!!! make thOse women pregnant :))))
+
 
 def mean_age(company: dict, i):
     '''
@@ -285,7 +308,33 @@ def mean_age(company: dict, i):
 
     return np.mean(ages_m), np.mean(ages_f)
 
+def bias(a, b):
+    return 0.5 - (b/(b+a))
 
+def get_bias(company, scale = 1):
+    '''
+    Determines the bias for the promotion of agents. The bias is determined by the gender distribution of the level at which there is an empty position. 
+    parameters
+    ----------
+    company : dictionary
+    scale : float, the scale of the bias
+    '''
+    gender_distribution = count_gender(company)
+    csuite_bias = bias(gender_distribution[1][0], gender_distribution[0][0]) * scale
+    svp_bias = bias(gender_distribution[1][1], gender_distribution[0][1]) * scale
+    vp_bias = bias(gender_distribution[1][2], gender_distribution[0][2]) * scale
+    senior_manager_bias = bias(gender_distribution[1][3], gender_distribution[0][3]) * scale
+    manager_bias = bias(gender_distribution[1][4], gender_distribution[0][4]) * scale
+    entry_level_bias = bias(gender_distribution[1][5], gender_distribution[0][5]) * scale
+
+    return csuite_bias, svp_bias, vp_bias, senior_manager_bias, manager_bias, entry_level_bias
+
+
+def create_dataframe(col_names, company_titles):
+    col_names.extend(company_titles)
+    data = pd.DataFrame(columns = col_names)
+
+    return data
 
 
 
@@ -296,7 +345,7 @@ def mean_age(company: dict, i):
 # check savepath in beginning of simulation
 # figure out what data to include
 
-def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, weights: dict, bias: float, plot_each_tick = False):
+def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, weights: dict, bias_scaler: float = 0.0, plot_each_tick = False, months_pl: int = 9):
     '''
     Runs the ABM simulation
 
@@ -308,12 +357,11 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     titles_n : list, a list of integers with the number of agents in each job title
     plot_each_tick : bool, if True, the gender distribution is plotted after each tick
     weights : dictionary, a dictionary containing the information used to generate agents
-    bias : float, a bias for the company's hiring process (positive bias = males are more likely to be promoted)
+    bias_scaler : float, higher number increases the influence of the bias of the gender distribution at the level at which a position is empty
+    month_pl : int, the number of months women are on parental leave after giving birth
     '''
     # creating empty dataframe for the results
-    col_names = ['tick', 'gender']
-    col_names.extend(company_titles)
-    data = pd.DataFrame(columns = col_names)
+    data = create_dataframe(['tick', 'gender'], company_titles)
     
     # create company
     company = create_company(company_titles, titles_n)
@@ -325,16 +373,18 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     if plot_each_tick:
         plot_gender(company, tick=-1)
 
+    # iterating though the months
     for month in range(months):
+        bias = get_bias(company, scale = bias_scaler)
         # iterating through all agents
         for ind_i, i in enumerate(company.keys()):
             for j in range(0, len(company[i])):
                 if company[i][j] is not None:
-                    update_agents(company, i, j, weights)
+                    update_agents(company, i, j, weights, months_pl)
                     fire_agent(company, i, j)
 
                 if company[i][j] == None:
-                    promote_agent(company, i, j, ind_i, weight=weights, bias=bias)
+                    promote_agent(company, i, j, ind_i, weight=weights, bias = bias)
             
         # plotting and appending data to data frame                           
         if plot_each_tick:
