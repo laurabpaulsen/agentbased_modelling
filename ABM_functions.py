@@ -2,6 +2,7 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from helper_functions import *
 
 ########## PREPERATION ##########
 # defining agents as abstact class
@@ -53,7 +54,7 @@ def populate_company(company: dict, weights: dict):
             company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weights[i]['weights'], k = 1), age = random.gauss(weights[i]['age'][0], weights[i]['age'][1]), seniority = random.gauss(weights[i]['seniority'][0], weights[i]['seniority'][1]), fire = random.choices([True, False], weights = weights[i]['fire']), seniority_position = random.gauss(weights[i]['seniority_position'][0], weights[i]['seniority_position'][1]))
 
 
-# function for counting gender of agents in the different hierchical levels of the company
+
 def count_gender(company):
     '''
     Counts the number of males and females of each job-title in the company
@@ -142,49 +143,9 @@ def plot_gender_development(company: dict, months:int, data: pd.DataFrame):
             ticks = gender_dat['tick']
             ax.plot(ticks, dat, color = colorlist[gender])
 
-# get nth_key
-def get_nth_key(dictionary: dict, n=0):
-    '''
-    Gets the nth key of a dictionary
 
-    Parameters
-    ----------
-    dictionary: dictionary
-    n: the nth key to get
+def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list, threshold: list, diversity_bias_scaler: float):
 
-    '''
-    if n < 0:
-        n += len(dictionary)
-    for i, key in enumerate(dictionary.keys()):
-        if i == n:
-            return key
-    raise IndexError("dictionary index out of range")
-
-def normalize_weights(list):
-    '''
-    Normalizes a list between 0 and 1
-    '''
-    try:
-        list = [float((i - min_none(list))) / float((max_none(list) - min_none(list))) if i != None else 0 for i in list]
-    except(ZeroDivisionError):
-        list = None # if the denominator is 0 the weights are equal
-    return list
-
-def min_none(list):
-    '''
-    Returns the minimum value of a list, ignores None values
-    '''
-    newlist = min([value for value in list if value != None])
-    return newlist
-
-def max_none(list):
-    '''
-    Returns the maximum value of a list, ignores None values
-    '''
-    newlist = max([value for value in list if value is not None])
-    return newlist
-
-def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list):
     '''
     Promotes an agent if the empty position is not at the lowest level of the company. It the empty position is at the lowest level of the company, a new agent is generated and hired. 
 
@@ -195,12 +156,30 @@ def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list):
     j : the index at which a position is available at level i
     ind_i : the index of the level at which a position is available
     weight : dictionary, a dictionary containing the information used to generate agents (used to generate new agents at he lowest level)
-    bias : list, 
+    bias : list,
+    threshold : list, the threshold for diversity
+    '''
+    gender_distribution = count_gender(company)
+    diversity_bias = diversity_check(gender_distribution, ind_i, threshold, diversity_bias_scaler)
+    choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias)
+
+def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias):
+    '''
+    Chooses an agent to promote
+
+    Parameters
+    ----------
+    company : dictionary,
+    i : the level at which a position is available
+    j : the index at which a position is available at level i
+    ind_i : the index of the level at which a position is available
+    weight : dictionary, a dictionary containing the information used to generate agents (used to generate new agents at he lowest level)
+    bias : a list of biases calculated from the gender distribution at each level OR the diversity bias, added if the number of women is below threshold
     '''
     # if level is the lowest, a new agent is created
     if i == list(company.keys())[-1]:
         company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weight[i]['weights'], k = 1), age = random.gauss(weight[i]['age'][0], weight[i]['age'][0]), seniority = random.gauss(weight[i]['seniority'][0], weight[i]['seniority'][1]), fire = weight[i]['fire'], seniority_position = 0) # SHOULD WE PUT IN A RANDOM ONE MAYBE THEY HAD A SIMILAR POSITION
-    
+        
     elif i != list(company.keys())[-1]:
         weights = []
         # determining weight from the attributes of agents on the level lower that the empty spot
@@ -209,13 +188,13 @@ def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list):
         for k in range(0, len(company[index])):
             if company[index][k] is not None:
                 if company[index][k].gender[0] == 'male':
-                    add_bias = bias[ind_i] # adding bias of the position that needs to be filled
+                    add_bias = bias[ind_i] + diversity_bias # adding bias of the position that needs to be filled
                 else:
                     add_bias = 0
-                weights.append((company[index][k].age + company[index][k].seniority)/(len(company[index])) + add_bias)
+                weights.append((company[index][k].seniority_position + company[index][k].seniority)/(len(company[index])) + add_bias)
             else:
                 weights.append(None)
-        #np.argsort(test_list, axis=-1)[-candidates:] -weight[index]['candidates']
+        
         promotion_candidates_index = np.argsort(np.where(~np.isin(weights, [None]), weights, -1e10))[-weight[i]['candidates']:]
 
         #normalizing weights THIS TAKES A LONG TIME... how can we speed this up?
@@ -274,6 +253,7 @@ def update_agents(company, i, j, weight:dict, months_pl):
     if company[i][j].age >= 68:
         company[i][j] = None
 
+
 def update_parental_leave(company: dict, i, j, months_pl):
     '''
 
@@ -308,8 +288,27 @@ def mean_age(company: dict, i):
 
     return np.mean(ages_m), np.mean(ages_f)
 
-def bias(a, b):
-    return 0.5 - (b/(b+a))
+
+def diversity_check(gender_distribution, ind_i, threshold, diversity_bias_scaler):
+    '''
+    Checks if the gender distribution is skewed above a certain threshold. Returns True if the distribution is above threshold (e.g., if the threshold is 30% and there is more than 30% women)
+
+    Parameters
+    ----------
+    gender_distribution : the output from the count_gender function
+    i : the company level at which the diversity is checked
+    threshold : the threshold for 
+    '''
+    percent_women = (gender_distribution[0][ind_i]/(gender_distribution[0][ind_i] + gender_distribution[1][ind_i]))
+
+    if percent_women > threshold:
+        diversity_bias = 0
+
+    else:
+        diversity_bias = (percent_women - threshold) * diversity_bias_scaler
+
+    return diversity_bias
+
 
 def get_bias(company, scale = 1):
     '''
@@ -330,22 +329,10 @@ def get_bias(company, scale = 1):
     return csuite_bias, svp_bias, vp_bias, senior_manager_bias, manager_bias, entry_level_bias
 
 
-def create_dataframe(col_names, company_titles):
-    col_names.extend(company_titles)
-    data = pd.DataFrame(columns = col_names)
-
-    return data
-
-
-
 
 ########## SIMULATION ##########
 
-# NOTES
-# check savepath in beginning of simulation
-# figure out what data to include
-
-def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, weights: dict, bias_scaler: float = 0.0, plot_each_tick = False, months_pl: int = 9):
+def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, weights: dict, bias_scaler: float = 1.0, plot_each_tick = False, months_pl: int = 9, threshold: float = 0.3, diversity_bias_scaler: float = 1.0):
     '''
     Runs the ABM simulation
 
@@ -359,6 +346,7 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     weights : dictionary, a dictionary containing the information used to generate agents
     bias_scaler : float, higher number increases the influence of the bias of the gender distribution at the level at which a position is empty
     month_pl : int, the number of months women are on parental leave after giving birth
+    threshold : list, the threshold for the share of women at a given level (if below threshold a positive bias is added towards women, i.e., increasing their probability of promotion)
     '''
     # creating empty dataframe for the results
     data = create_dataframe(['tick', 'gender'], company_titles)
@@ -375,7 +363,7 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
 
     # iterating though the months
     for month in range(months):
-        bias = get_bias(company, scale = bias_scaler)
+        bias = list(get_bias(company, scale = bias_scaler))
         # iterating through all agents
         for ind_i, i in enumerate(company.keys()):
             for j in range(0, len(company[i])):
@@ -384,15 +372,15 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
                     fire_agent(company, i, j)
 
                 if company[i][j] == None:
-                    promote_agent(company, i, j, ind_i, weight=weights, bias = bias)
+                    promote_agent(company, i, j, ind_i, weight=weights, bias = bias, threshold = threshold[ind_i], diversity_bias_scaler = diversity_bias_scaler)
             
         # plotting and appending data to data frame                           
         if plot_each_tick:
             plot_gender(company, tick = month)
         
-
-        f = {'gender': 'female', 'tick': month, 'C-Suite': count_gender(company)[0][0],'SVP': count_gender(company)[0][1], 'VP': count_gender(company)[0][2], 'Senior Manager': count_gender(company)[0][3], 'Manager': count_gender(company)[0][4], 'Entry Level': count_gender(company)[0][5]}
-        m = {'gender': 'male', 'tick': month, 'C-Suite': count_gender(company)[1][0],'SVP': count_gender(company)[1][1], 'VP': count_gender(company)[1][2], 'Senior Manager': count_gender(company)[1][3], 'Manager': count_gender(company)[1][4], 'Entry Level': count_gender(company)[1][5] }
+        counts = count_gender(company)
+        f = {'gender': 'female', 'tick': month, 'C-Suite': counts[0][0],'SVP': counts[0][1], 'VP': counts[0][2], 'Senior Manager': counts[0][3], 'Manager': counts[0][4], 'Entry Level': counts[0][5]}
+        m = {'gender': 'male', 'tick': month, 'C-Suite': counts[1][0],'SVP': counts[1][1], 'VP': counts[1][2], 'Senior Manager': counts[1][3], 'Manager': counts[1][4], 'Entry Level': counts[1][5] }
 
         # create pandas dataframe from dictionaries f and m
         new_data = pd.DataFrame.from_dict([f, m])
@@ -404,6 +392,9 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     plot_gender_development(company, months = months, data = data)
     # saving the data to a csv-file
     data.to_csv(save_path)
+
+    # saving the company as is 
+    save_dict(company)
 
 
                 
