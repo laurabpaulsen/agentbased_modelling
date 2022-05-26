@@ -9,7 +9,7 @@ from helper_functions import *
 class Agent:
     # init-method, the constructor method for agents
     # maybe we dont need the position and index parameters? these will be given in the populate_company function
-    def __init__(self, position, index, gender, age, seniority, fire, seniority_position):
+    def __init__(self, position, index, gender, age, seniority, fire, seniority_position, id):
         self.position = position
         self.index = index
         self.gender = gender
@@ -18,6 +18,7 @@ class Agent:
         self.fire = fire[0] # could potentially be dependent on the sex and the seniority and the position?
         self.seniority_position = seniority_position
         self.parental_leave = None # DO SOMETHING HERE both seniority should be paused when on parental leave
+        self.id = id
 
 
 # function for creating empty dictionary (company)
@@ -49,10 +50,13 @@ def populate_company(company: dict, weights: dict):
     company : dictionary, a dictionary with the job titles as keys and empty lists as values
     weights: dictionary, a dictionary containing information on how to generate the attributes of the agents in each jobtitle
     '''
+    id = 1
     for i in company.keys():
         for j in range(0, len(company[i])):
-            company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weights[i]['weights'], k = 1), age = random.gauss(weights[i]['age'][0], weights[i]['age'][1]), seniority = random.gauss(weights[i]['seniority'][0], weights[i]['seniority'][1]), fire = random.choices([True, False], weights = weights[i]['fire']), seniority_position = random.gauss(weights[i]['seniority_position'][0], weights[i]['seniority_position'][1]))
-
+            # id
+            id += 1
+            company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weights[i]['weights'], k = 1), age = random.gauss(weights[i]['age'][0], weights[i]['age'][1]), seniority = random.gauss(weights[i]['seniority'][0], weights[i]['seniority'][1]), fire = random.choices([True, False], weights = weights[i]['fire']), seniority_position = random.gauss(weights[i]['seniority_position'][0], weights[i]['seniority_position'][1]), id = id)
+    return id
 
 
 def count_gender(company):
@@ -85,6 +89,7 @@ def plot_gender(company, tick):
     Parameters
     ---------- 
     company : dictionary, a dictionary with the job titles as keys and lists of agents as values
+    tick : 
     '''
     female, male = count_gender(company)
     
@@ -93,8 +98,8 @@ def plot_gender(company, tick):
     width = 0.35  # the width of the bars
 
     fig, ax = plt.subplots(figsize=(9,6))
-    rects1 = ax.bar(x - width/2, female, width, label='Female', color = 'skyblue')
-    rects2 = ax.bar(x + width/2, male, width, label='Male', color = 'steelblue')
+    rects1 = ax.bar(x - width/2, female, width, label = 'Female', color = 'skyblue')
+    rects2 = ax.bar(x + width/2, male, width, label = 'Male', color = 'steelblue')
 
     # Add some text for labels, title and custom x-axis tick labels, etc.
     ax.set_ylabel('Count')
@@ -144,7 +149,7 @@ def plot_gender_development(company: dict, months:int, data: pd.DataFrame):
             ax.plot(ticks, dat, color = colorlist[gender])
 
 
-def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list, threshold: list, diversity_bias_scaler: float):
+def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list, threshold: list, diversity_bias_scaler: float, id):
 
     '''
     Promotes an agent if the empty position is not at the lowest level of the company. It the empty position is at the lowest level of the company, a new agent is generated and hired. 
@@ -161,9 +166,9 @@ def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list, threshold:
     '''
     gender_distribution = count_gender(company)
     diversity_bias = diversity_check(gender_distribution, ind_i, threshold, diversity_bias_scaler)
-    choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias)
+    choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, id)
 
-def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias):
+def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, id):
     '''
     Chooses an agent to promote
 
@@ -178,7 +183,7 @@ def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias):
     '''
     # if level is the lowest, a new agent is created
     if i == list(company.keys())[-1]:
-        company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weight[i]['weights'], k = 1), age = random.gauss(weight[i]['age'][0], weight[i]['age'][0]), seniority = random.gauss(weight[i]['seniority'][0], weight[i]['seniority'][1]), fire = weight[i]['fire'], seniority_position = 0) # SHOULD WE PUT IN A RANDOM ONE MAYBE THEY HAD A SIMILAR POSITION
+        company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weight[i]['weights'], k = 1), age = random.gauss(weight[i]['age'][0], weight[i]['age'][0]), seniority = random.gauss(weight[i]['seniority'][0], weight[i]['seniority'][1]), fire = weight[i]['fire'], seniority_position = 0, id = id) # SHOULD WE PUT IN A RANDOM ONE MAYBE THEY HAD A SIMILAR POSITION
         
     elif i != list(company.keys())[-1]:
         weights = []
@@ -206,13 +211,11 @@ def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias):
 
         # setting the seniority in the position as 0
         agent.seniority_position = 0
-
-        # promoting the agent
-        company[i][j] = agent
         # removing the agent from the lower level of the company
         company[agent.position][agent.index] = None
-        # changing the position of the agent
-        company[i][j].postition = i
+        agent.position = i
+        # promoting the agent
+        company[i][j] = agent
         # changing the index of the agent
         company[i][j].index = j
 
@@ -227,7 +230,7 @@ def fire_agent(company, i, j):
             company[i][j] = None
 
 
-def update_agents(company, i, j, weight:dict, months_pl):
+def update_agents(company, i, j, weight:dict, months_pl, parental_leave_weights):
     '''
     Updates the agents each tick (e.g. adding a month to seniority and age). This function also keeps track of parental leave. 
 
@@ -239,22 +242,26 @@ def update_agents(company, i, j, weight:dict, months_pl):
     weight : dictionary, a dictionary containing the information used to generate agents
     months_pl : int, the number of months of parental leave
     '''
-    # adding a month to the seniority of all agents
-    company[i][j].seniority += 1/12
-    # adding a month to the position seniority of all agents
-    company[i][j].seniority_position += 1/12
+    if company[i][j].parental_leave == None:
+        # adding a month to the seniority of all agents not on parental leave
+        company[i][j].seniority += 1/12
+        # adding a month to the position seniority of all agents not on parental leave
+        company[i][j].seniority_position += 1/12
+    
     # adding a month to the age of all agents
     company[i][j].age += 1/12
     if company[i][j].gender[0] == 'female' : # ADD STUFF FOR PARENTAL LEAVE
-        company[i][j].parental_leave = update_parental_leave(company, i, j, months_pl)
+        update_parental_leave(company, i, j, months_pl, parental_leave_weights)
+    
     # fire some agents ADD CONDITIONS e.g., not allowed to fire agents on parental leave
     company[i][j].fire = random.choices([True, False], weights = weight[i]['fire'], k = 1)
+    
     # if the agent has reached the age of 68, the agent is retired
     if company[i][j].age >= 68:
         company[i][j] = None
 
 
-def update_parental_leave(company: dict, i, j, months_pl):
+def update_parental_leave(company: dict, i, j, months_pl, parental_leave_weights):
     '''
 
     Parameters
@@ -267,9 +274,29 @@ def update_parental_leave(company: dict, i, j, months_pl):
     if company[i][j].parental_leave != None:
         if company[i][j].parental_leave == months_pl:
             company[i][j].parental_leave = None # when the agent has been on parental leave for the time specified, the parental leave is ended
+        else:
+            company[i][j].parental_leave += 1 # adding one to the parental leave
 
     elif company[i][j].parental_leave == None:
-        pass # ADD STUFF HERE!!! make thOse women pregnant :))))
+        parental_leave(company, i, j, parental_leave_weights)
+
+def parental_leave(company, i, j, parental_leave_weights):
+    '''
+    A function that determines whether an agent should begin parental leave or not
+
+    Parameters
+    ----------
+    agent : 
+    '''
+    if company[i][j].age >= 20:
+        if company[i][j].age <= 50:
+            leave = random.choices([1, None], weights = parental_leave_weights)
+            company[i][j].parental_leave = leave[0]
+
+    else:
+        company[i][j].parental_leave = None
+        
+
 
 
 def mean_age(company: dict, i):
@@ -332,7 +359,7 @@ def get_bias(company, scale = 1):
 
 ########## SIMULATION ##########
 
-def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, weights: dict, bias_scaler: float = 1.0, plot_each_tick = False, months_pl: int = 9, threshold: float = 0.3, diversity_bias_scaler: float = 1.0):
+def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, weights: dict, bias_scaler: float = 1.0, plot_each_tick = False, months_pl: int = 9, threshold: float = 0.3, diversity_bias_scaler: float = 1.0, parental_leave_weights = [0.001, 1]):
     '''
     Runs the ABM simulation
 
@@ -350,12 +377,13 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     '''
     # creating empty dataframe for the results
     data = create_dataframe(['tick', 'gender'], company_titles)
+    adata = pd.DataFrame()
     
     # create company
     company = create_company(company_titles, titles_n)
     
-    # populate company using weights
-    populate_company(company, weights)
+    # populate company using weights, and saving the last ID given to an agent
+    id = populate_company(company, weights)
 
     # plot initial
     if plot_each_tick:
@@ -367,12 +395,16 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
         # iterating through all agents
         for ind_i, i in enumerate(company.keys()):
             for j in range(0, len(company[i])):
+                id += 1
                 if company[i][j] is not None:
-                    update_agents(company, i, j, weights, months_pl)
+                    update_agents(company, i, j, weights, months_pl, parental_leave_weights)
                     fire_agent(company, i, j)
 
                 if company[i][j] == None:
-                    promote_agent(company, i, j, ind_i, weight=weights, bias = bias, threshold = threshold[ind_i], diversity_bias_scaler = diversity_bias_scaler)
+                    promote_agent(company, i, j, ind_i, weight=weights, bias = bias, threshold = threshold[ind_i], diversity_bias_scaler = diversity_bias_scaler, id = id)
+           
+                dat = {'id': company[i][j].id, 'gender': company[i][j].gender[0], 'age': company[i][j].age, 'seniority': company[i][j].seniority, 'seniority_pos': company[i][j].seniority_position, 'parental_leave': company[i][j].parental_leave, 'position': company[i][j].position, 'tick': month}
+                adata = adata.append(dat, ignore_index=True, verify_integrity=False, sort=False)
             
         # plotting and appending data to data frame                           
         if plot_each_tick:
@@ -391,9 +423,9 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     # plotting the gender development over time
     plot_gender_development(company, months = months, data = data)
     # saving the data to a csv-file
-    data.to_csv(save_path)
+    adata.to_csv(save_path)
 
-    # saving the company as is 
+    # saving the company as is at the end of the simulation
     save_dict(company)
 
 
