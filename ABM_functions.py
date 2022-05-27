@@ -230,7 +230,7 @@ def fire_agent(company, i, j):
             company[i][j] = None
 
 
-def update_agents(company, i, j, weight:dict, months_pl, parental_leave_weights):
+def update_agents(company, i, j, weight:dict, months_pl, parental_leave_weights, intervention):
     '''
     Updates the agents each tick (e.g. adding a month to seniority and age). This function also keeps track of parental leave. 
 
@@ -250,7 +250,10 @@ def update_agents(company, i, j, weight:dict, months_pl, parental_leave_weights)
     
     # adding a month to the age of all agents
     company[i][j].age += 1/12
-    if company[i][j].gender[0] == 'female' : # ADD STUFF FOR PARENTAL LEAVE
+    if intervention == None:
+        if company[i][j].gender[0] == 'female' : # ADD STUFF FOR PARENTAL LEAVE
+            update_parental_leave(company, i, j, months_pl, parental_leave_weights)
+    if intervention == 'shared_parental':
         update_parental_leave(company, i, j, months_pl, parental_leave_weights)
     
     # fire some agents ADD CONDITIONS e.g., not allowed to fire agents on parental leave
@@ -359,7 +362,7 @@ def get_bias(company, scale = 1):
 
 ########## SIMULATION ##########
 
-def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, weights: dict, bias_scaler: float = 1.0, plot_each_tick = False, months_pl: int = 9, threshold: float = 0.3, diversity_bias_scaler: float = 1.0, parental_leave_weights = [0.001, 1]):
+def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, weights: dict, bias_scaler: float = 1.0, plot_each_tick = False, months_pl: int = 9, threshold: float = 0.3, diversity_bias_scaler: float = 1.0, parental_leave_weights = [0.001, 1], intervention = None, company = None):
     '''
     Runs the ABM simulation
 
@@ -374,13 +377,15 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     bias_scaler : float, higher number increases the influence of the bias of the gender distribution at the level at which a position is empty
     month_pl : int, the number of months women are on parental leave after giving birth
     threshold : list, the threshold for the share of women at a given level (if below threshold a positive bias is added towards women, i.e., increasing their probability of promotion)
+    intervention : the type of intervention to apply
     '''
     # creating empty dataframe for the results
     data = create_dataframe(['tick', 'gender'], company_titles)
     adata = pd.DataFrame()
     
     # create company
-    company = create_company(company_titles, titles_n)
+    if company == None:
+        company = create_company(company_titles, titles_n)
     
     # populate company using weights, and saving the last ID given to an agent
     id = populate_company(company, weights)
@@ -397,7 +402,7 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
             for j in range(0, len(company[i])):
                 id += 1
                 if company[i][j] is not None:
-                    update_agents(company, i, j, weights, months_pl, parental_leave_weights)
+                    update_agents(company, i, j, weights, months_pl, parental_leave_weights, intervention)
                     fire_agent(company, i, j)
 
                 if company[i][j] == None:
@@ -426,7 +431,8 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     adata.to_csv(save_path)
 
     # saving the company as is at the end of the simulation
-    save_dict(company)
+    if intervention == None:
+        save_dict(company)
 
 
                 
