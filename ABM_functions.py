@@ -149,7 +149,7 @@ def plot_gender_development(company: dict, months:int, data: pd.DataFrame):
             ax.plot(ticks, dat, color = colorlist[gender])
 
 
-def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list, threshold: list, diversity_bias_scaler: float, id):
+def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list, threshold: list, diversity_bias_scaler: float, id, intervention):
 
     '''
     Promotes an agent if the empty position is not at the lowest level of the company. It the empty position is at the lowest level of the company, a new agent is generated and hired. 
@@ -166,9 +166,9 @@ def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list, threshold:
     '''
     gender_distribution = count_gender(company)
     diversity_bias = diversity_check(gender_distribution, ind_i, threshold, diversity_bias_scaler)
-    choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, id)
+    choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, id, intervention)
 
-def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, id):
+def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, id, intervention):
     '''
     Chooses an agent to promote
 
@@ -184,6 +184,29 @@ def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, i
     # if level is the lowest, a new agent is created
     if i == list(company.keys())[-1]:
         company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weight[i]['weights'], k = 1), age = random.gauss(weight[i]['age'][0], weight[i]['age'][0]), seniority = random.gauss(weight[i]['seniority'][0], weight[i]['seniority'][1]), fire = weight[i]['fire'], seniority_position = 0, id = id) # SHOULD WE PUT IN A RANDOM ONE MAYBE THEY HAD A SIMILAR POSITION
+
+    elif i == list(company.keys())[0] and intervention == 'quota':
+        # random choice between female and male
+        gender = random.choices(['male', 'female'], weights = [1, 1])
+
+        candidates = []
+        weights = []
+
+        for k in range(0, len(company['SVP'])):
+            if company['SVP'][k].gender == gender:
+                weights.append(company['SVP'][k].seniority_position + company['SVP'][k].seniority)
+        
+        agent = company['SVP'][random.choices(candidates, weights = weights)[0]]
+        # setting the seniority in the position as 0
+        agent.seniority_position = 0
+        # removing the agent from the lower level of the company
+        company[agent.position][agent.index] = None
+        agent.position = i
+        # promoting the agent
+        company[i][j] = agent
+        # changing the index of the agent
+        company[i][j].index = j
+
         
     elif i != list(company.keys())[-1]:
         weights = []
@@ -192,7 +215,7 @@ def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, i
         index = get_nth_key(company, (ind_i+1))
         for k in range(0, len(company[index])):
             if company[index][k] is not None:
-                if company[index][k].gender[0] == 'male':
+                if company[index][k].gender[0] == 'male' and intervention != 'blinding':
                     add_bias = bias[ind_i] + diversity_bias # adding bias of the position that needs to be filled
                 else:
                     add_bias = 0
@@ -201,9 +224,15 @@ def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, i
                 weights.append(None)
         
         promotion_candidates_index = np.argsort(np.where(~np.isin(weights, [None]), weights, -1e10))[-weight[i]['candidates']:]
-
-        #normalizing weights THIS TAKES A LONG TIME... how can we speed this up?
         weights = np.array(weights)[promotion_candidates_index]
+
+        if intervention == 'blinding':
+            # adding bias to the weights after finding candidates for the position
+            for ind_we, k in enumerate(promotion_candidates_index):
+                if company[index][k].gender == 'male':
+                    weights[ind_we] = weights[ind_we] + bias[ind_i] + diversity_bias 
+
+        #normalizing weights
         weights = normalize_weights(weights)
 
         # an agent from the promotion candidates is promoted using the random choice function, with weights calculated - CHECK THAT THIS WORKS AS INTENDED
@@ -406,7 +435,7 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
                     fire_agent(company, i, j)
 
                 if company[i][j] == None:
-                    promote_agent(company, i, j, ind_i, weight=weights, bias = bias, threshold = threshold[ind_i], diversity_bias_scaler = diversity_bias_scaler, id = id)
+                    promote_agent(company, i, j, ind_i, weight=weights, bias = bias, threshold = threshold[ind_i], diversity_bias_scaler = diversity_bias_scaler, id = id, intervention = intervention)
            
                 dat = {'id': company[i][j].id, 'gender': company[i][j].gender[0], 'age': company[i][j].age, 'seniority': company[i][j].seniority, 'seniority_pos': company[i][j].seniority_position, 'parental_leave': company[i][j].parental_leave, 'position': company[i][j].position, 'tick': month}
                 adata = adata.append(dat, ignore_index=True, verify_integrity=False, sort=False)
