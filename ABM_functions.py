@@ -221,9 +221,12 @@ def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, i
             else:
                 weights.append(None)
             
-
-        
-        promotion_candidates_index = np.argsort(np.where(~np.isin(weights, [None]), weights, -1e10))[-weight[i]['candidates']:]
+        if intervention == 'shortlist':
+            n_candidates = -20
+            print
+        else: 
+            n_candidates = -weight[i]['candidates']
+        promotion_candidates_index = np.argsort(np.where(~np.isin(weights, [None]), weights, -1e10))[n_candidates:]
         weights = np.array(weights)[promotion_candidates_index]
 
         if intervention == 'blinding':
