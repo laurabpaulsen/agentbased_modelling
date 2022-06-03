@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from helper_functions import *
+from scipy.stats import truncnorm
 
 ########## PREPERATION ##########
 # defining agents as abstact class
@@ -39,6 +40,9 @@ def create_company(titles:list, n:list):
 
     return company
 
+def get_truncated_normal(mean=0, sd=1, low=20, upp=68):
+    x = truncnorm((low - mean) / sd, (upp - mean) / sd, loc=mean, scale=sd)
+    return x.rvs(1)[0]
 
 # function for creating the first agents and putting them in the company
 def populate_company(company: dict, weights: dict):
@@ -55,7 +59,7 @@ def populate_company(company: dict, weights: dict):
         for j in range(0, len(company[i])):
             # id
             id += 1
-            company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weights[i]['weights'], k = 1), age = random.gauss(weights[i]['age'][0], weights[i]['age'][1]), seniority = random.gauss(weights[i]['seniority'][0], weights[i]['seniority'][1]), fire = random.choices([True, False], weights = weights[i]['fire']), seniority_position = random.gauss(weights[i]['seniority_position'][0], weights[i]['seniority_position'][1]), id = id)
+            company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weights[i]['weights'], k = 1), age = get_truncated_normal(mean = weights[i]['age'][0], sd = weights[i]['age'][1]), seniority = random.gauss(weights[i]['seniority'][0], weights[i]['seniority'][1]), fire = random.choices([True, False], weights = weights[i]['fire']), seniority_position = random.gauss(weights[i]['seniority_position'][0], weights[i]['seniority_position'][1]), id = id)
     return id
 
 
@@ -78,6 +82,21 @@ def count_gender(company):
                 else:
                     male_count[index] += 1
     return female_count, male_count
+
+def mean_seniority(company):
+    '''
+    Calculates the mean seniority of the company
+    '''
+    means = []
+    for i in (company.keys()):
+        seniority_list = [i.seniority for i in company[i] if i is not None]
+        seniority_pos_list = [i.seniority_position for i in company[i] if i is not None]
+
+        zipped_list = list(zip(seniority_list, seniority_pos_list))
+        zipped_list = [x+y for (x, y) in zipped_list]
+        means.append(np.mean(zipped_list))
+    
+    return means
 
 
 ########## PLOTTING ##########
@@ -149,7 +168,7 @@ def plot_gender_development(company: dict, months:int, data: pd.DataFrame):
             ax.plot(ticks, dat, color = colorlist[gender])
 
 
-def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list, threshold: list, diversity_bias_scaler: float, id, intervention):
+def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list, threshold: list, diversity_bias_scaler: float, id, intervention, mean_senior):
 
     '''
     Promotes an agent if the empty position is not at the lowest level of the company. It the empty position is at the lowest level of the company, a new agent is generated and hired. 
@@ -166,9 +185,9 @@ def promote_agent(company:dict, i, j, ind_i, weight:dict, bias: list, threshold:
     '''
     gender_distribution = count_gender(company)
     diversity_bias = diversity_check(gender_distribution, ind_i, threshold, diversity_bias_scaler)
-    choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, id, intervention)
+    choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, id, intervention, mean_senior)
 
-def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, id, intervention):
+def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, id, intervention, mean_senior):
     '''
     Chooses an agent to promote
 
@@ -184,32 +203,10 @@ def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, i
     # if level is the lowest, a new agent is created
     if i == list(company.keys())[-1]:
         company[i][j] = Agent(position = i, index = j, gender = random.choices(['male', 'female'], weights = weight[i]['weights'], k = 1), age = random.gauss(weight[i]['age'][0], weight[i]['age'][0]), seniority = random.gauss(weight[i]['seniority'][0], weight[i]['seniority'][1]), fire = weight[i]['fire'], seniority_position = 0, id = id) # SHOULD WE PUT IN A RANDOM ONE MAYBE THEY HAD A SIMILAR POSITION
-
-    elif i == list(company.keys())[0] and intervention == 'quota':
-        # random choice between female and male
-        gender = random.choices(['male', 'female'], weights = [1, 1])
-
-        candidates = []
-        weights = []
-
-        for k in range(0, len(company['SVP'])):
-            if company['SVP'][k].gender == gender:
-                weights.append(company['SVP'][k].seniority_position + company['SVP'][k].seniority)
-        
-        agent = company['SVP'][random.choices(candidates, weights = weights)[0]]
-        # setting the seniority in the position as 0
-        agent.seniority_position = 0
-        # removing the agent from the lower level of the company
-        company[agent.position][agent.index] = None
-        agent.position = i
-        # promoting the agent
-        company[i][j] = agent
-        # changing the index of the agent
-        company[i][j].index = j
-
-        
+  
     elif i != list(company.keys())[-1]:
         weights = []
+        
         # determining weight from the attributes of agents on the level lower that the empty spot
         # the weight is determined by the age and the seniority of the agent and normalized by the number of agents on the level lower that the empty spot
         index = get_nth_key(company, (ind_i+1))
@@ -219,9 +216,12 @@ def choose_agent_promotion(company, i, j, ind_i, weight, bias, diversity_bias, i
                     add_bias = bias[ind_i] + diversity_bias # adding bias of the position that needs to be filled
                 else:
                     add_bias = 0
-                weights.append((company[index][k].seniority_position + company[index][k].seniority)/(len(company[index])) + add_bias)
+                weights.append((company[index][k].seniority_position + company[index][k].seniority)/(mean_senior[ind_i+1]) + add_bias)
+
             else:
                 weights.append(None)
+            
+
         
         promotion_candidates_index = np.argsort(np.where(~np.isin(weights, [None]), weights, -1e10))[-weight[i]['candidates']:]
         weights = np.array(weights)[promotion_candidates_index]
@@ -259,7 +259,7 @@ def fire_agent(company, i, j):
             company[i][j] = None
 
 
-def update_agents(company, i, j, weight:dict, months_pl, parental_leave_weights, intervention):
+def update_agents(company, i, j, weight:dict, months_pl, intervention):
     '''
     Updates the agents each tick (e.g. adding a month to seniority and age). This function also keeps track of parental leave. 
 
@@ -280,10 +280,10 @@ def update_agents(company, i, j, weight:dict, months_pl, parental_leave_weights,
     # adding a month to the age of all agents
     company[i][j].age += 1/12
     if intervention == None:
-        if company[i][j].gender[0] == 'female' : # ADD STUFF FOR PARENTAL LEAVE
-            update_parental_leave(company, i, j, months_pl, parental_leave_weights)
+        if company[i][j].gender[0] == 'female':
+            update_parental_leave(company, i, j, months_pl)
     if intervention == 'shared_parental':
-        update_parental_leave(company, i, j, months_pl, parental_leave_weights)
+        update_parental_leave(company, i, j, months_pl)
     
     # fire some agents ADD CONDITIONS e.g., not allowed to fire agents on parental leave
     company[i][j].fire = random.choices([True, False], weights = weight[i]['fire'], k = 1)
@@ -293,7 +293,7 @@ def update_agents(company, i, j, weight:dict, months_pl, parental_leave_weights,
         company[i][j] = None
 
 
-def update_parental_leave(company: dict, i, j, months_pl, parental_leave_weights):
+def update_parental_leave(company: dict, i, j, months_pl):
     '''
 
     Parameters
@@ -310,9 +310,9 @@ def update_parental_leave(company: dict, i, j, months_pl, parental_leave_weights
             company[i][j].parental_leave += 1 # adding one to the parental leave
 
     elif company[i][j].parental_leave == None:
-        parental_leave(company, i, j, parental_leave_weights)
+        parental_leave(company, i, j)
 
-def parental_leave(company, i, j, parental_leave_weights):
+def parental_leave(company, i, j):
     '''
     A function that determines whether an agent should begin parental leave or not
 
@@ -320,14 +320,24 @@ def parental_leave(company, i, j, parental_leave_weights):
     ----------
     agent : 
     '''
-    if company[i][j].age >= 20:
-        if company[i][j].age <= 50:
-            leave = random.choices([1, None], weights = parental_leave_weights)
+    if company[i][j].age >= 20 and company[i][j].age <= 24:
+            leave = random.choices([1, None], weights = [0.072/(12*5), 0.9988])
             company[i][j].parental_leave = leave[0]
-
+    elif company[i][j].age >= 25 and company[i][j].age <= 29:
+            leave = random.choices([1, None], weights = [0.0981/(12*5), 0.998365])
+            company[i][j].parental_leave = leave[0]
+    elif company[i][j].age >= 30 and company[i][j].age <= 34:
+            leave = random.choices([1, None], weights = [0.1005/(12*5), 0.998325])
+            company[i][j].parental_leave = leave[0]
+    elif company[i][j].age >= 35 and company[i][j].age <= 39:
+            leave = random.choices([1, None], weights = [0.0524/(12*5), 0.9988])
+            company[i][j].parental_leave = leave[0]
+    elif company[i][j].age >= 40 and company[i][j].age <= 45:
+            leave = random.choices([1, None], weights = [0.0126/(12*5), 0.9997])
+            company[i][j].parental_leave = leave[0]
     else:
         company[i][j].parental_leave = None
-        
+    
 
 
 
@@ -391,7 +401,7 @@ def get_bias(company, scale = 1):
 
 ########## SIMULATION ##########
 
-def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, weights: dict, bias_scaler: float = 1.0, plot_each_tick = False, months_pl: int = 9, threshold: float = 0.3, diversity_bias_scaler: float = 1.0, parental_leave_weights = [0.001, 1], intervention = None, company = None):
+def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, weights: dict, bias_scaler: float = 1.0, plot_each_tick = False, months_pl: float = 9, threshold: float = 0.3, diversity_bias_scaler: float = 1.0, intervention = None, company = None):
     '''
     Runs the ABM simulation
 
@@ -426,16 +436,17 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     # iterating though the months
     for month in range(months):
         bias = list(get_bias(company, scale = bias_scaler))
+        mean_senior = mean_seniority(company)
         # iterating through all agents
         for ind_i, i in enumerate(company.keys()):
             for j in range(0, len(company[i])):
                 id += 1
                 if company[i][j] is not None:
-                    update_agents(company, i, j, weights, months_pl, parental_leave_weights, intervention)
+                    update_agents(company, i, j, weights, months_pl, intervention)
                     fire_agent(company, i, j)
 
                 if company[i][j] == None:
-                    promote_agent(company, i, j, ind_i, weight=weights, bias = bias, threshold = threshold[ind_i], diversity_bias_scaler = diversity_bias_scaler, id = id, intervention = intervention)
+                    promote_agent(company, i, j, ind_i, weight=weights, bias = bias, threshold = threshold[ind_i], diversity_bias_scaler = diversity_bias_scaler, id = id, intervention = intervention, mean_senior = mean_senior)
            
                 dat = {'id': company[i][j].id, 'gender': company[i][j].gender[0], 'age': company[i][j].age, 'seniority': company[i][j].seniority, 'seniority_pos': company[i][j].seniority_position, 'parental_leave': company[i][j].parental_leave, 'position': company[i][j].position, 'tick': month}
                 adata = adata.append(dat, ignore_index=True, verify_integrity=False, sort=False)
@@ -445,8 +456,8 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
             plot_gender(company, tick = month)
         
         counts = count_gender(company)
-        f = {'gender': 'female', 'tick': month, 'C-Suite': counts[0][0],'SVP': counts[0][1], 'VP': counts[0][2], 'Senior Manager': counts[0][3], 'Manager': counts[0][4], 'Entry Level': counts[0][5]}
-        m = {'gender': 'male', 'tick': month, 'C-Suite': counts[1][0],'SVP': counts[1][1], 'VP': counts[1][2], 'Senior Manager': counts[1][3], 'Manager': counts[1][4], 'Entry Level': counts[1][5] }
+        f = {'gender': 'female', 'tick': month, 'Level 1': counts[0][0],'Level 2': counts[0][1], 'Level 3': counts[0][2], 'Level 4': counts[0][3], 'Level 5': counts[0][4], 'Level 6': counts[0][5]}
+        m = {'gender': 'male', 'tick': month, 'Level 1': counts[1][0],'Level 2': counts[1][1], 'Level 3': counts[1][2], 'Level 4': counts[1][3], 'Level 5': counts[1][4], 'Level 6': counts[1][5] }
 
         # create pandas dataframe from dictionaries f and m
         new_data = pd.DataFrame.from_dict([f, m])

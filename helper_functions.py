@@ -8,7 +8,7 @@ def create_dataframe(col_names, company_titles):
     return data
 
 def bias(a, b):
-    return 0.5 - (b/(b+a))
+    return 1 - (b/(b+a))
 
 
 def normalize_weights(list):
