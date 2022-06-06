@@ -429,8 +429,8 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     if company == None:
         company = create_company(company_titles, titles_n)
     
-    # populate company using weights, and saving the last ID given to an agent
-    id = populate_company(company, weights)
+        # populate company using weights, and saving the last ID given to an agent
+        id = populate_company(company, weights)
 
     # plot initial
     if plot_each_tick:
