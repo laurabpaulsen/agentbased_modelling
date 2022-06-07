@@ -1,0 +1,209 @@
+---
+title: "Bayesian_analysis"
+author: "Laura Bock Paulsen and Emma Risgaard Olsen"
+date: "6/7/2022"
+output: html_document
+---
+
+```{r}
+library(rethinking)
+pacman::p_load(tidyverse, cowplot, ggplot2)
+```
+
+
+## Preparing the data
+To begin with the data is loaded, and a column is created with the intervention
+```{r}
+blinding1 <- read_csv('data1/data_blinding.csv')
+blinding2 <- read_csv('data2/data_blinding.csv')
+blinding3 <- read_csv('data3/data_blinding.csv')
+blinding4 <- read_csv('data4/data_blinding.csv')
+
+blinding <- rbind(blinding1, blinding2, blinding3, blinding4)
+blinding$intervention <- 4
+
+shortlist1 <- read_csv('data1/data_shortlist.csv')
+shortlist2 <- read_csv('data2/data_shortlist.csv')
+shortlist3 <- read_csv('data3/data_shortlist.csv')
+shortlist4 <- read_csv('data4/data_shortlist.csv')
+
+shortlist <- rbind(shortlist1, shortlist2, shortlist3, shortlist4)
+shortlist$intervention <- 3
+
+parental1 <- read_csv('data1/data_shared_parental.csv')
+parental2 <- read_csv('data2/data_shared_parental.csv')
+parental3 <- read_csv('data3/data_shared_parental.csv')
+parental4 <- read_csv('data4/data_shared_parental.csv')
+
+parental <- rbind(parental1, parental2, parental3, parental4)
+parental$intervention <- 2
+
+nointervention1 <- read_csv('data1/data_no_intervention.csv')
+nointervention2 <- read_csv('data2/data_no_intervention.csv')
+nointervention3 <- read_csv('data3/data_no_intervention.csv')
+nointervention4 <- read_csv('data4/data_no_intervention.csv')
+
+nointervention <- rbind(nointervention1, nointervention2, nointervention3, nointervention4)
+nointervention$intervention <- 1
+```
+
+Then the data frames are merged and filtered as to only contain the last tick
+```{r}
+df <- rbind(blinding, shortlist, parental, nointervention) %>% filter(tick == 59)
+```
+
+
+Then the data list is prepared for the model
+```{r}
+dat <- list(
+  S = as.integer(ifelse(df$gender == 'male', 0 , 1)),
+  In = as.integer(df$intervention),
+  L = as.integer(as.factor(df$position))
+)
+```
+
+```{r}
+unique(dat$In)
+unique(dat$L)
+unique(dat$S)
+```
+
+```{r}
+m <- ulam(
+ alist(S ~ dbern(p),
+    logit(p) <- I[In,L],
+    matrix[In, L]:I ~ normal(0, 0.5)
+    ) , data=dat, chains=4, cores = 4, refresh=0)
+```
+
+```{r}
+precis_plot(precis(m, depth = 3))
+```
+### Prior predictive checks
+```{r}
+prior <- extract.prior(m)
+```
+
+```{r}
+predictions <- link(m, post = prior, data = dat)
+priormeans <- rowMeans(predictions)
+dens(priormeans, main="Means of Prior Predictions Across All Agents")
+```
+
+### Posterior predictive checks
+```{r}
+post_int <- extract.samples(m)
+predictions <- link(m, post = post_int, data = dat)
+postmeans <- rowMeans(predictions)
+dens(postmeans, main="Means of Posterior Predictions Across All Agents")
+```
+
+```{r}
+predicted_gender <- sim(m, dat)
+mean_predicted <- round(colMeans(predicted_gender), 0)
+table(dat$S, mean_predicted)
+```
+
+
+### Intervention contrast
+```{r}
+plot_contrasts <- function(level, xlim, ylim){
+  
+  title <-paste('Level', level)
+  
+  PrS <- inv_logit(post_int$I)
+  diff_prob <- as.tibble(sapply(2:4, function(i) PrS[, i, level] - PrS[, 1, level]))
+  colnames(diff_prob) <- c("Parental Leave", "Shortlist", "Blinding")
+  data_long <- gather(diff_prob, Intervention, measurement, 'Parental Leave':'Blinding')
+  
+  p <- ggplot(data_long, aes(x = measurement, color = Intervention)) + 
+    geom_density() +
+    scale_colour_brewer(palette="Paired") +
+    xlab('Contrast against baseline (Probabilities)')+
+    ylab('Density')+
+    ggtitle(title) +
+    theme_classic()+
+    theme(legend.position = c(0.8, 0.8))
+  p
+  
+    
+  
+  return(p)
+}
+```
+
+
+
+
+```{r}
+p6 <- plot_contrasts(6, xlim = c(-0.05, 0.15), ylim = c(0, 40))
+p5 <- plot_contrasts(5, xlim = c(-0.1, 0.05), ylim = c(0, 40))
+p4 <- plot_contrasts(4, xlim = c(-0.1, 0.1), ylim = c(0, 20))
+p3 <- plot_contrasts(3, xlim = c(-0.2, 0.2), ylim = c(0, 15))
+p2 <- plot_contrasts(2, xlim = c(-0.4, 0.4), ylim = c(0, 10))
+p1 <- plot_contrasts(1, xlim = c(-0.5,0.5), ylim = c(0, 5))
+
+p6
+p5
+p4
+p3
+p2
+p1
+```
+
+
+```{r}
+plot_grid(p1, p2, p3, p4, p5, p6)
+```
+
+
+#### Relative effect sizes
+
+```{r}
+mean(exp(post_int$I[,2,6] - post_int$I[,1,6])) # Intervention, Level
+mean(exp(post_int$I[,3,6] - post_int$I[,1,6])) # Intervention, Level
+mean(exp(post_int$I[,4,6] - post_int$I[,1,6])) # Intervention, Level
+```
+What does this mean? When switching from baseline (intervention 1) to each of the other interventions, the odds of agents being female is multiplied by ____
+
+
+```{r}
+mean(exp(post_int$I[,2,5] - post_int$I[,1,5])) # Intervention, Level
+mean(exp(post_int$I[,3,5] - post_int$I[,1,5])) # Intervention, Level
+mean(exp(post_int$I[,4,5] - post_int$I[,1,5])) # Intervention, Level
+```
+
+```{r}
+mean(exp(post_int$I[,2,4] - post_int$I[,1,4])) # Intervention, Level
+mean(exp(post_int$I[,3,4] - post_int$I[,1,4])) # Intervention, Level
+mean(exp(post_int$I[,4,4] - post_int$I[,1,4])) # Intervention, Level
+```
+
+```{r}
+mean(exp(post_int$I[,2,3] - post_int$I[,1,3])) # Intervention, Level
+mean(exp(post_int$I[,3,3] - post_int$I[,1,3])) # Intervention, Level
+mean(exp(post_int$I[,4,3] - post_int$I[,1,3])) # Intervention, Level
+```
+
+
+```{r}
+mean(exp(post_int$I[,2,2] - post_int$I[,1,2])) # Intervention, Level
+mean(exp(post_int$I[,3,2] - post_int$I[,1,2])) # Intervention, Level
+mean(exp(post_int$I[,4,2] - post_int$I[,1,2])) # Intervention, Level
+```
+
+
+```{r}
+mean(exp(post_int$I[,2,1] - post_int$I[,1,1])) # Intervention, Level
+mean(exp(post_int$I[,3,1] - post_int$I[,1,1])) # Intervention, Level
+mean(exp(post_int$I[,4,1] - post_int$I[,1,1])) # Intervention, Level
+```
+
+
+
+
+
+```{r}
+df %>% group_by(position, intervention) %>% count(gender)
+```
+
