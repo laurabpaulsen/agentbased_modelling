@@ -10,5 +10,5 @@ This repository holds all necessary files to run the analyses conducted in the S
 | `ABM.ipynb`                        | Notebook for running the agent-based model               |
 | `ABM_functions.py`                 | Functions used to run the agent-based model              |
 | `helper_functions.py`              | Additional functions                                     |
-| `data_analysis.ipynb`              | Code for plotting of the calibration simulation          |
+| `plot_calibration.ipynb`           | Code for plotting of the calibration simulation          |
 | `bayesian_analysis.Rmd`            | Code for conducting bayesian analysis of data from ABM   |
