@@ -18,38 +18,49 @@ blinding1 <- read_csv('data1/data_blinding.csv')
 blinding2 <- read_csv('data2/data_blinding.csv')
 blinding3 <- read_csv('data3/data_blinding.csv')
 blinding4 <- read_csv('data4/data_blinding.csv')
+blinding5 <- read_csv('data5/data_blinding.csv')
+blinding6 <- read_csv('data5/data_blinding.csv')
 
-blinding <- rbind(blinding1, blinding2, blinding3, blinding4)
+blinding <- rbind(blinding1, blinding2, blinding3, blinding4, blinding5, blinding6)
 blinding$intervention <- 4
 
 shortlist1 <- read_csv('data1/data_shortlist.csv')
 shortlist2 <- read_csv('data2/data_shortlist.csv')
 shortlist3 <- read_csv('data3/data_shortlist.csv')
 shortlist4 <- read_csv('data4/data_shortlist.csv')
+shortlist5 <- read_csv('data5/data_shortlist.csv')
+shortlist6 <- read_csv('data6/data_shortlist.csv')
 
-shortlist <- rbind(shortlist1, shortlist2, shortlist3, shortlist4)
+shortlist <- rbind(shortlist1, shortlist2, shortlist3, shortlist4, shortlist5, shortlist6)
 shortlist$intervention <- 3
 
 parental1 <- read_csv('data1/data_shared_parental.csv')
 parental2 <- read_csv('data2/data_shared_parental.csv')
 parental3 <- read_csv('data3/data_shared_parental.csv')
 parental4 <- read_csv('data4/data_shared_parental.csv')
+parental5 <- read_csv('data5/data_shared_parental.csv')
+parental6 <- read_csv('data6/data_shared_parental.csv')
 
-parental <- rbind(parental1, parental2, parental3, parental4)
+parental <- rbind(parental1, parental2, parental3, parental4, parental5, parental6)
 parental$intervention <- 2
 
 nointervention1 <- read_csv('data1/data_no_intervention.csv')
 nointervention2 <- read_csv('data2/data_no_intervention.csv')
 nointervention3 <- read_csv('data3/data_no_intervention.csv')
 nointervention4 <- read_csv('data4/data_no_intervention.csv')
+nointervention5 <- read_csv('data5/data_no_intervention.csv')
+nointervention6 <- read_csv('data6/data_no_intervention.csv')
 
-nointervention <- rbind(nointervention1, nointervention2, nointervention3, nointervention4)
+nointervention <- rbind(nointervention1, nointervention2, nointervention3, nointervention4, nointervention5, nointervention6)
 nointervention$intervention <- 1
+
+rm(blinding1, blinding2, blinding3, blinding4, blinding5, blinding6, shortlist1, shortlist2, shortlist3, shortlist4, shortlist5, shortlist6, parental1, parental2, parental3, parental4, parental5, parental6, nointervention1, nointervention2, nointervention3, nointervention4, nointervention5, nointervention6)
 ```
 
 Then the data frames are merged and filtered as to only contain the last tick
 ```{r}
 df <- rbind(blinding, shortlist, parental, nointervention) %>% filter(tick == 59)
+rm(nointervention, parental, shortlist, blinding)
 ```
 
 
@@ -62,11 +73,6 @@ dat <- list(
 )
 ```
 
-```{r}
-unique(dat$In)
-unique(dat$L)
-unique(dat$S)
-```
 
 ```{r}
 m <- ulam(
@@ -74,6 +80,13 @@ m <- ulam(
     logit(p) <- I[In,L],
     matrix[In, L]:I ~ normal(0, 0.5)
     ) , data=dat, chains=4, cores = 4, refresh=0)
+```
+
+```{r}
+precis(m, depth = 3)
+round(inv_logit(precis(m, depth = 3)$mean),2)
+round(inv_logit(precis(m, depth = 3)$`5.5%`),2)
+round(inv_logit(precis(m, depth = 3)$`94.5%`),2)
 ```
 
 ```{r}
@@ -107,23 +120,24 @@ table(dat$S, mean_predicted)
 
 ### Intervention contrast
 ```{r}
-plot_contrasts <- function(level, xlim, ylim){
+plot_contrasts <- function(level, legend, xlab, ylab){
   
   title <-paste('Level', level)
   
   PrS <- inv_logit(post_int$I)
-  diff_prob <- as.tibble(sapply(2:4, function(i) PrS[, i, level] - PrS[, 1, level]))
+  diff_prob <- as_tibble(sapply(2:4, function(i) PrS[, i, level] - PrS[, 1, level]))
   colnames(diff_prob) <- c("Parental Leave", "Shortlist", "Blinding")
   data_long <- gather(diff_prob, Intervention, measurement, 'Parental Leave':'Blinding')
   
   p <- ggplot(data_long, aes(x = measurement, color = Intervention)) + 
-    geom_density() +
+    geom_density(size = 0.8, adjust = 1/2) + 
+    geom_vline(xintercept = 0, colour = 'Black', linetype = 'dashed')+
     scale_colour_brewer(palette="Paired") +
-    xlab('Contrast against baseline (Probabilities)')+
-    ylab('Density')+
+    xlab(xlab)+
+    ylab(ylab)+
     ggtitle(title) +
     theme_classic()+
-    theme(legend.position = c(0.8, 0.8))
+    theme(legend.position = legend)
   p
   
     
@@ -134,14 +148,13 @@ plot_contrasts <- function(level, xlim, ylim){
 
 
 
-
 ```{r}
-p6 <- plot_contrasts(6, xlim = c(-0.05, 0.15), ylim = c(0, 40))
-p5 <- plot_contrasts(5, xlim = c(-0.1, 0.05), ylim = c(0, 40))
-p4 <- plot_contrasts(4, xlim = c(-0.1, 0.1), ylim = c(0, 20))
-p3 <- plot_contrasts(3, xlim = c(-0.2, 0.2), ylim = c(0, 15))
-p2 <- plot_contrasts(2, xlim = c(-0.4, 0.4), ylim = c(0, 10))
-p1 <- plot_contrasts(1, xlim = c(-0.5,0.5), ylim = c(0, 5))
+p6 <- plot_contrasts(6, 'dogde', xlab = '', ylab = '')
+p5 <- plot_contrasts(5, 'dogde', xlab = 'Contrast against baseline (Probabilities)', ylab = '')
+p4 <- plot_contrasts(4, 'dogde', xlab = '', ylab = 'Density')
+p3 <- plot_contrasts(3, c(0.8, 0.8), xlab = '', ylab = '')
+p2 <- plot_contrasts(2, 'dogde', xlab = 'Contrast against baseline (Probabilities)', ylab = '')
+p1 <- plot_contrasts(1, 'dogde', xlab = '', ylab = 'Density')
 
 p6
 p5
@@ -153,19 +166,16 @@ p1
 
 
 ```{r}
-plot_grid(p1, p2, p3, p4, p5, p6)
+plot_grid(p1, p2, p3, p4, p5, p6,label_x = "Contrast")
+
 ```
 
-
 #### Relative effect sizes
-
 ```{r}
 mean(exp(post_int$I[,2,6] - post_int$I[,1,6])) # Intervention, Level
 mean(exp(post_int$I[,3,6] - post_int$I[,1,6])) # Intervention, Level
 mean(exp(post_int$I[,4,6] - post_int$I[,1,6])) # Intervention, Level
 ```
-What does this mean? When switching from baseline (intervention 1) to each of the other interventions, the odds of agents being female is multiplied by ____
-
 
 ```{r}
 mean(exp(post_int$I[,2,5] - post_int$I[,1,5])) # Intervention, Level
@@ -200,10 +210,4 @@ mean(exp(post_int$I[,4,1] - post_int$I[,1,1])) # Intervention, Level
 ```
 
 
-
-
-
-```{r}
-df %>% group_by(position, intervention) %>% count(gender)
-```
 
