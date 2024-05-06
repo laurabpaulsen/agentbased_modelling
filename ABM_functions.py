@@ -5,6 +5,9 @@ import pandas as pd
 from helper_functions import *
 from scipy.stats import truncnorm
 
+# import functions for timing (start and end)
+from time import time
+
 ########## PREPERATION ##########
 # defining agents as abstact class
 class Agent:
@@ -424,6 +427,8 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     # creating empty dataframe for the results
     data = create_dataframe(['tick', 'gender'], company_titles)
     adata = pd.DataFrame()
+
+    adata_list = []
     
     # create company
     if company == None:
@@ -441,20 +446,48 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
     for month in range(months):
         bias = list(get_bias(company, scale = bias_scaler))
         mean_senior = mean_seniority(company)
+        
+        update_agents_time = 0
+        fire_time = 0
+        promoting_time = 0
+        concat_time = 0
+
         # iterating through all agents
         for ind_i, i in enumerate(company.keys()):
             for j in range(0, len(company[i])):
                 id += 1
                 if company[i][j] is not None:
+                    start = time()
                     update_agents(company, i, j, weights, months_pl, intervention)
+                    end = time()
+                    update_agents_time += end - start
+
+                    start = time()
                     fire_agent(company, i, j)
+                    end = time()
+                    fire_time += end - start
 
                 if company[i][j] == None:
+                    start = time()
                     promote_agent(company, i, j, ind_i, weight=weights, bias = bias, threshold = threshold[ind_i], diversity_bias_scaler = diversity_bias_scaler, id = id, intervention = intervention, mean_senior = mean_senior)
-           
+                    end = time()
+
+                    promoting_time += end - start
+                
+                start = time()
                 dat = {'id': company[i][j].id, 'gender': company[i][j].gender[0], 'age': company[i][j].age, 'seniority': company[i][j].seniority, 'seniority_pos': company[i][j].seniority_position, 'parental_leave': company[i][j].parental_leave, 'position': company[i][j].position, 'tick': month}
-                adata = adata.append(dat, ignore_index=True, verify_integrity=False, sort=False)
-            
+                adata_list.append(dat)
+                #adata = pd.concat([adata, pd.DataFrame.from_dict([dat])], ignore_index=True, verify_integrity=False, sort=False)
+                end = time()
+
+                concat_time += end - start
+
+        print('tick {} done'.format(month))
+        print('update_agents_time: ', update_agents_time)
+        print('fire_time: ', fire_time)
+        print('promoting_time: ', promoting_time)
+        print('concat_time: ', concat_time)
+
         # plotting and appending data to data frame                           
         if plot_each_tick:
             plot_gender(company, tick = month)
@@ -465,12 +498,14 @@ def run_abm(months: int, save_path: str, company_titles: list, titles_n: list, w
 
         # create pandas dataframe from dictionaries f and m
         new_data = pd.DataFrame.from_dict([f, m])
-        data = data.append(new_data, ignore_index=False, verify_integrity=False, sort=False)
+        data = pd.concat([data, new_data], ignore_index=True, verify_integrity=False, sort=False)
 
         print('tick {} done'.format(month))
 
     # plotting the gender development over time
     plot_gender_development(company, months = months, data = data)
+    
+    adata = pd.DataFrame(adata_list)
     # saving the data to a csv-file
     adata.to_csv(save_path)
 
